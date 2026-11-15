@@ -4,10 +4,8 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -28,13 +26,6 @@ class SmartStudyApp extends StatelessWidget {
     return MaterialApp(
       title: 'مساعدي الدراسي الذكي',
       debugShowCheckedModeBanner: false,
-      locale: const Locale('ar', 'DZ'),
-      supportedLocales: const [Locale('ar', 'DZ'), Locale('ar'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: const Color(0xFF1E6F5C),
@@ -45,10 +36,13 @@ class SmartStudyApp extends StatelessWidget {
         colorSchemeSeed: const Color(0xFF289672),
         brightness: Brightness.dark,
       ),
-      home: const Directionality(
-        textDirection: TextDirection.rtl,
-        child: HomeScreen(),
-      ),
+      builder: (context, child) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+      home: const HomeScreen(),
     );
   }
 }
@@ -392,7 +386,7 @@ class AiStudyService {
 
   static Future<String> generateSummary(LessonModel lesson, List<AttachmentModel> attachments) async {
     final model = await _getModel(jsonOutput: false);
-    const prompt = 'انطلاقاً من الصور والملفات المرفقة فقط، أنشئ ملخصاً دراسياً شاملاً ومنظماً بتنسيق Markdown يتضمن الفكرة العامة، المفاهيم الأساسية، الشرح التفصيلي، وأهم نقاط المراجعة.';
+    const prompt = 'انطلاقاً من الصور والملفات المرفقة فقط، أنشئ ملخصاً دراسياً شاملاً ومنظماً يتضمن الفكرة العامة، المفاهيم الأساسية، الشرح التفصيلي، وأهم نقاط المراجعة.';
     final parts = await _buildLessonParts(lesson, attachments, prompt);
     final response = await model.generateContent([Content.multi(parts)]);
     return response.text ?? 'تعذر إنشاء الملخص.';
@@ -488,39 +482,50 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.forum_outlined),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Directionality(textDirection: TextDirection.rtl, child: StudyChatScreen(lesson: null)))),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudyChatScreen(lesson: null))),
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Directionality(textDirection: TextDirection.rtl, child: SettingsScreen()))),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
           ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _lessons.length,
-              itemBuilder: (context, index) {
-                final lesson = _lessons[index];
-                return Card(
-                  child: ListTile(
-                    title: Text(lesson.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(lesson.createdAt.split('T').first),
-                    onTap: () async {
-                      await Navigator.push(context, MaterialPageRoute(builder: (_) => Directionality(textDirection: TextDirection.rtl, child: LessonDetailScreen(lessonId: lesson.id!))));
-                      _refreshData();
-                    },
-                  ),
-                );
-              },
-            ),
+          : _lessons.isEmpty
+              ? const Center(child: Text('اضغط على زر الإضافة لتصوير درس أو رفع ملف'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _lessons.length,
+                  itemBuilder: (context, index) {
+                    final lesson = _lessons[index];
+                    return Card(
+                      child: ListTile(
+                        title: Text(lesson.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(lesson.createdAt.split('T').first),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () async {
+                            if (lesson.id != null) {
+                              await LocalDatabase.instance.deleteLesson(lesson.id!);
+                              _refreshData();
+                            }
+                          },
+                        ),
+                        onTap: () async {
+                          await Navigator.push(context, MaterialPageRoute(builder: (_) => LessonDetailScreen(lessonId: lesson.id!)));
+                          _refreshData();
+                        },
+                      ),
+                    );
+                  },
+                ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final created = await showModalBottomSheet<bool>(
             context: context,
             isScrollControlled: true,
-            builder: (_) => const Directionality(textDirection: TextDirection.rtl, child: AddLessonBottomSheet()),
+            builder: (_) => const AddLessonBottomSheet(),
           );
           if (created == true) _refreshData();
         },
@@ -689,7 +694,7 @@ class _LessonDetailScreenState extends State<LessonDetailScreen> with SingleTick
               children: [
                 _lesson!.summary == null
                     ? Center(child: FilledButton(onPressed: () => _runTask(() async => _lesson!.copyWith(summary: await AiStudyService.generateSummary(_lesson!, _attachments))), child: const Text('توليد الملخص')))
-                    : SingleChildScrollView(padding: const EdgeInsets.all(16), child: GptMarkdown(_lesson!.summary!)),
+                    : SingleChildScrollView(padding: const EdgeInsets.all(16), child: SelectableText(_lesson!.summary!, style: const TextStyle(fontSize: 15, height: 1.6))),
                 _lesson!.mindMapJson == null
                     ? Center(child: FilledButton(onPressed: () => _runTask(() async => _lesson!.copyWith(mindMapJson: await AiStudyService.generateMindMapJson(_lesson!, _attachments))), child: const Text('توليد الخريطة الذهنية')))
                     : SingleChildScrollView(padding: const EdgeInsets.all(16), child: SelectableText(_lesson!.mindMapJson!)),
@@ -755,7 +760,7 @@ class _StudyChatScreenState extends State<StudyChatScreen> {
             padding: const EdgeInsets.all(16),
             itemCount: _msgs.length,
             itemBuilder: (_, i) => ListTile(
-              title: GptMarkdown(_msgs[i].content),
+              title: SelectableText(_msgs[i].content),
               subtitle: Text(_msgs[i].role == 'user' ? 'أنت' : 'المعلم الذكي'),
             ),
           ),
