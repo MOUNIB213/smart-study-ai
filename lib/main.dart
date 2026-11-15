@@ -612,8 +612,8 @@ class _AddLessonBottomSheetState extends State<AddLessonBottomSheet> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () async {
-                    final res = await FilePicker.platform.pickFiles(allowMultiple: true);
-                    if (res != null) setState(() => _selectedFiles.addAll(res.files.where((f) => f.path != null).map((f) => File(f.path!))));
+                    final files = await FilePicker.pickFiles();
+                    if (files.isNotEmpty) setState(() => _selectedFiles.addAll(files.where((f) => f.path != null).map((f) => File(f.path!))));
                   },
                   icon: const Icon(Icons.upload_file),
                   label: const Text('رفع ملفات'),
